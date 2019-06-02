@@ -30,7 +30,24 @@ function enable-overlay-storage() {
 
     if [[ -n "${overlay_works}" ]]; then
       msg="Enabling overlay storage for docker-in-docker"
-      sed -i -e 's+vfs+overlay+' /etc/sysconfig/docker-storage
+      python3 <(cat <<EOFEOF
+import json;
+strOutput = None;
+daemonFile = '/etc/docker/daemon.json';
+with open(daemonFile, 'r') as fptr:
+    d = json.load(fptr);
+    if 'storage-driver' in d:
+        d['storage-driver'] = "overlay";
+        strOutput = json.dumps(d, indent=4, sort_keys=True);
+    # end if
+# end with
+if strOutput is not None:
+    with open(daemonFile, 'w') as fptr:
+        fptr.write(strOutput);
+    # end with
+# end if
+EOFEOF
+)
     fi
   fi
 

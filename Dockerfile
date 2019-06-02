@@ -16,11 +16,11 @@
 #
 #  - run with --privileged
 #
-#      $ docker run -d --privileged maru/systemd-dind
+#      $ docker run -d --privileged maru/systemd-dind:ubuntu18.04
 #
 
-FROM fedora:28
-MAINTAINER marun@redhat.com
+FROM ubuntu:18.04
+MAINTAINER marun@redhat.com/sam80180
 
 # Fix 'WARNING: terminal is not fully functional' when TERM=dumb
 ENV TERM=xterm
@@ -33,51 +33,40 @@ VOLUME ["/run", "/tmp"]
 
 STOPSIGNAL SIGRTMIN+3
 
-RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == systemd-tmpfiles-setup.service ] || rm -f $i; done); \
-rm -f /lib/systemd/system/multi-user.target.wants/*;\
-rm -f /etc/systemd/system/*.wants/*;\
-rm -f /lib/systemd/system/local-fs.target.wants/*; \
-rm -f /lib/systemd/system/sockets.target.wants/*udev*; \
-rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
-rm -f /lib/systemd/system/basic.target.wants/*;\
-rm -f /lib/systemd/system/anaconda.target.wants/*;
+RUN apt-get update && apt-get install -y systemd iptables
+#RUN cd /lib/systemd/system/sysinit.target.wants/; for i in *; do test "${i}" = "systemd-tmpfiles-setup.service" || rm -f $i; done; \
+#	rm -f /lib/systemd/system/multi-user.target.wants/*; \
+#	rm -f /etc/systemd/system/*.wants/*; \
+#	rm -f /lib/systemd/system/local-fs.target.wants/*; \
+#	rm -f /lib/systemd/system/sockets.target.wants/*udev*; \
+#	rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
+#	rm -f /lib/systemd/system/basic.target.wants/*; \
+#	rm -f /lib/systemd/system/anaconda.target.wants/*
 
-RUN systemctl mask\
- auditd.service\
- console-getty.service\
- dev-hugepages.mount\
- dnf-makecache.service\
- docker-storage-setup.service\
- getty.target\
- lvm2-lvmetad.service\
- sys-fs-fuse-connections.mount\
- systemd-logind.service\
- systemd-remount-fs.service\
- systemd-udev-hwdb-update.service\
- systemd-udev-trigger.service\
- systemd-udevd.service\
- systemd-vconsole-setup.service
-RUN cp /usr/lib/systemd/system/dbus.service /etc/systemd/system/;\
- sed -i 's/OOMScoreAdjust=-900//' /etc/systemd/system/dbus.service
+#RUN systemctl mask\
+#	console-getty.service\
+#	dev-hugepages.mount\
+#	getty.target\
+#	sys-fs-fuse-connections.mount\
+#	systemd-logind.service\
+#	systemd-remount-fs.service\
+RUN cp /lib/systemd/system/dbus.service /etc/systemd/system/;\
+	sed -i 's/OOMScoreAdjust=-900//' /etc/systemd/system/dbus.service
 
-RUN dnf -y update && dnf -y install\
- dnf-plugins-core\
- iptables\
- && dnf clean all
+# https://kubernetes.io/docs/setup/cri/#docker
+RUN apt-get install -y apt-transport-https ca-certificates curl software-properties-common && \
+	curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && \
+	add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 
-RUN dnf config-manager --add-repo\
- https://download.docker.com/linux/fedora/docker-ce.repo
-
-RUN dnf -y install docker-ce\
- && dnf clean all
+RUN apt-get update && apt-get install -y docker-ce=18.06.2~ce~3-0~ubuntu
 
 # Configure docker
 
 RUN systemctl enable docker.service
 
 # Default storage to vfs.  overlay will be enabled at runtime if available.
-RUN echo "DOCKER_STORAGE_OPTIONS=--storage-driver vfs" >\
- /etc/sysconfig/docker-storage
+RUN mkdir -p /etc/docker
+COPY etc/docker/daemon.json /etc/docker/daemon.json
 
 COPY dind-setup.sh /usr/local/bin
 COPY dind-setup.service /etc/systemd/system/
@@ -89,6 +78,9 @@ VOLUME ["/var/lib/docker"]
 # detect containers using this image as requiring read-only cgroup
 # mounts.  containers running docker need to be run with --privileged
 # to ensure cgroups are mounted with read-write permissions.
-RUN ln /usr/sbin/init /usr/sbin/dind_init
+RUN ln /sbin/init /usr/sbin/dind_init
 
-CMD ["/usr/sbin/dind_init"]
+ENTRYPOINT ["/usr/sbin/dind_init"]
+
+# limpiar
+RUN apt-get clean ; history -c; rm -f ~/.bash_history

@@ -4,7 +4,7 @@ Before=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/bash /usr/local/bin/dind-setup.sh
+ExecStart=/bin/bash /usr/local/bin/dind-setup.sh
 
 [Install]
 RequiredBy=docker.service
